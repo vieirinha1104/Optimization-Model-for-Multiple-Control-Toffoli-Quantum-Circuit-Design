@@ -3,20 +3,39 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Variables
-n = 3
-d = 2
-arr = [0] * n
-brr = ['-'] * n
-qubits_dict = {} # Dictionary in order to index all the qubit arrays possible.
-# Example: {0: [0, 0, 0], 1: [0, 0, 1], 2: [0, 1, 0], 3: [0, 1, 1], 4: [1, 0, 0], 5: [1, 0, 1], 6: [1, 1, 0], 7: [1, 1, 1]}
-toffoli_dict = {} # Dictionary in order to index all the toffoli gates possible.
+n = 3  # Number of qubits
+d = 2  # Maximum number of gates of the circuit
+
+# Initialize arrays
+arr = [0] * n  # Aux array for storing qubit states
+brr = ['-'] * n  # Aux array for storring Toffoli gates
+
+# Table for the Quantum Cost of the MCT Gates
+costs = [
+    [1, 1, 5, 13, 29, 62, 125, 253],
+    [1, 1, 5, 13, 29, 52, 80, 253],
+    [1, 1, 5, 13, 26, 52, 80, 253],
+    [1, 1, 5, 13, 26, 38, 80, 253],
+    [1, 1, 5, 13, 26, 38, 50, 253]
+]
+
+# Dictonary for indexing the Toffoli gates into their costs
+costs_dict = {}
+# Example: 0: ['o', 'x', 'x'] -> costs_dict[0] =  5 
+
+# Dictionaries for indexing qubit states and Toffoli gates
+qubits_dict = {}  # Dictionary for all possible qubit arrays
+# Example: {0: [0, 0, 0], 1: [0, 0, 1], 2: [0, 1, 0], 3: [0, 1, 1], ... }
+
+toffoli_dict = {}  # Dictionary for indexing all possible Toffoli gates
 # 'x': control qubit, 'o': target qubit, '-': slack qubit
 
 # Functions
+
 # This function set all the elements in the toffoli_dict, O(n*(3^n)) 
 def setToffoliDict(k):
     if(k == n):
-        v = [0,0,0]
+        v = [0,0,0] # v[0]: # of target qubits, v[1]: # of control qubits, v[2]: # of slack qubits
         for x in brr:
             if(x == 'o'):
                 v[0] += 1
@@ -28,12 +47,14 @@ def setToffoliDict(k):
             return
         m = len(toffoli_dict)
         toffoli_dict[m] = brr.copy()
+        costs_dict[m] = costs[v[2]][v[1]]
     else:
         for i in ['o','x','-']:
             aux = brr[k]
             brr[k] = i
             setToffoliDict(k+1)
             brr[k] = aux
+
 # This function set all the elements in the qubits_dict, O(2^n) in all cases
 def setQubitsDict(k):
     if(k == n):
@@ -71,7 +92,7 @@ def transition(index_q, index_f):
         prod *= 2
     return index
 
-# Generate the Graph
+# Build the Graph, O(d*n*2^n))
 def multilayered_graph(n,d):
     G = nx.Graph()
     for i in range(0, d+1):
@@ -83,21 +104,22 @@ def multilayered_graph(n,d):
         for node in nodes_per_layer:
             for gate in toffoli_dict.keys():
                 vertex = (transition(node[0], gate),i+1)
-                G.add_edge(node, vertex, layer = i)
+                G.add_edge(node, vertex, weight = costs_dict[gate], layer = i)
     return G
 
+# Main
 
+# print(toffoli_dict)
+# print(costs_dict)
+# print(qubits_dict)
 setQubitsDict(0)
 setToffoliDict(0)
-# print(toffoli_dict)
-# print(qubits_dict)
-
 G = multilayered_graph(n,d)
 print("Nodes: ",G.nodes())
 print("\n")
 print("Edges: ", G.edges())
 
-# Create a custom position layout with sorted nodes
+# Plot the Graph
 pos = {}
 layer_spacing = 2  # Vertical spacing between layers
 node_spacing = 1.5  # Horizontal spacing between nodes
@@ -109,9 +131,10 @@ for layer in range(d+1):
     for idx, node in enumerate(nodes_in_layer):
         pos[node] = (idx * node_spacing, -layer * layer_spacing)
 
-# Plot with custom position
+# Plot 
 plt.figure(figsize=(12, 8))
 nx.draw(G, pos, with_labels=True, node_size=700, node_color='lightblue', arrows=True, arrowstyle='-|>', arrowsize=20)
+
 plt.axis("equal")
 plt.title('Multipartite Graph')
 plt.show()
