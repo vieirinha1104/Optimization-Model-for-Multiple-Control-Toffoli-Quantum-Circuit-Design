@@ -94,7 +94,7 @@ def transition(index_q, index_f):
 
 # Build the Graph, O(d*n*2^n))
 def multilayered_graph(n,d):
-    G = nx.Graph()
+    G = nx.DiGraph()
     for i in range(0, d+1):
         for j in range(0, 2**n):
             node = (j,i)
