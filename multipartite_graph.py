@@ -104,6 +104,7 @@ def multilayered_graph(n,d):
         for node in nodes_per_layer:
             for gate in toffoli_dict.keys():
                 vertex = (transition(node[0], gate),i+1)
+                # print(node, vertex, costs_dict[gate])
                 G.add_edge(node, vertex, weight = costs_dict[gate], layer = i)
     return G
 
@@ -115,9 +116,9 @@ def multilayered_graph(n,d):
 setQubitsDict(0)
 setToffoliDict(0)
 G = multilayered_graph(n,d)
-print("Nodes: ",G.nodes())
-print("\n")
-print("Edges: ", G.edges())
+# print("Nodes: ",G.nodes())
+# print("\n")
+# print("Edges: ", G.edges())
 
 # Plot the Graph
 pos = {}
@@ -138,3 +139,12 @@ nx.draw(G, pos, with_labels=True, node_size=700, node_color='lightblue', arrows=
 plt.axis("equal")
 plt.title('Multipartite Graph')
 plt.show()
+
+for i in range(0,2**n):
+    path = nx.single_source_shortest_path(G,(i,0))
+    target = path.keys()
+    print(qubits_dict[i]," : ", end = ' ')
+    for e in target:
+        if(e[1] == d):
+            print(qubits_dict[e[0]], end = ' ')
+    print("\n")
