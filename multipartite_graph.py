@@ -1,6 +1,7 @@
 import networkx as nx
 import matplotlib.pyplot as plt
 import numpy as np
+import itertools
 
 # Variables
 n = 3  # Number of qubits
@@ -18,6 +19,10 @@ costs = [
     [1, 1, 5, 13, 26, 38, 80, 253],
     [1, 1, 5, 13, 26, 38, 50, 253]
 ]
+
+# Arrays for the Omega Partition
+omega_input = []
+omega_output = []
 
 # Dictonary for indexing the Toffoli gates into their costs
 costs_dict = {}
@@ -95,11 +100,11 @@ def transition(index_q, index_f):
 # Build the Graph, O(d*n*2^n))
 def multilayered_graph(n,d):
     G = nx.DiGraph()
-    for i in range(0, d+1):
+    for i in range(1, d+2):
         for j in range(0, 2**n):
             node = (j,i)
             G.add_node(node, layer = i)
-    for i in range(0, d):
+    for i in range(1, d+1):
         nodes_per_layer = [node for node, data in G.nodes(data=True) if data.get('layer') == i]
         for node in nodes_per_layer:
             for gate in toffoli_dict.keys():
@@ -107,6 +112,50 @@ def multilayered_graph(n,d):
                 # print(node, vertex, costs_dict[gate])
                 G.add_edge(node, vertex, weight = costs_dict[gate], layer = i)
     return G
+
+def omegaPartition():
+    boolean_function = {}
+    file_name = 'test.txt'
+    data = []
+    with open(file_name, 'r') as file:
+        for row in file:
+            row = row.strip()
+            if row:
+                data.append(row)
+    index = 0
+    for row in data:
+        column = row.split(' ')
+        boolean_function[index] = column[1]
+        index += 1
+    values = []
+    for i in range(0,2**n):
+        values.append(boolean_function[i])
+    check = [False]*(2**n)
+    for i in range(0, 2**n):
+        if(check[i] == True):
+            continue
+        s1 = values[i]
+        aux = [i]
+        check[i] = True
+        for j in range(i+1,2**n):
+            if(j >= 2**n):
+                break
+            s2 = values[j]
+            if(s1 == s2):
+                aux.append(j)
+                check[j] = True
+        omega_input.append(aux)
+
+    for x in omega_input:
+        output = boolean_function[x[0]]
+        new_output = []
+        for s in output:
+            if(s != '-'):
+                new_output.append(s)
+            else:
+                new_output.append(['0','1'])
+        aux = itertools.product(*new_output)
+        omega_output.append([int(''.join(map(str, i)), 2) for i in aux])
 
 # Main
 
@@ -116,9 +165,12 @@ def multilayered_graph(n,d):
 setQubitsDict(0)
 setToffoliDict(0)
 G = multilayered_graph(n,d)
-# print("Nodes: ",G.nodes())
+omegaPartition()
+print("Nodes: ",G.nodes())
 # print("\n")
-# print("Edges: ", G.edges())
+print("Edges: ", G.edges())
+# print(omega_input)
+print(omega_output)
 
 # Plot the Graph
 pos = {}
@@ -126,7 +178,7 @@ layer_spacing = 2  # Vertical spacing between layers
 node_spacing = 1.5  # Horizontal spacing between nodes
 
 # Calculate positions
-for layer in range(d+1):
+for layer in range(1,d+2):
     nodes_in_layer = [node for node in G.nodes() if node[1] == layer]
     nodes_in_layer.sort(key=lambda x: x[0])  # Sort nodes by their index in qubits_dict
     for idx, node in enumerate(nodes_in_layer):
