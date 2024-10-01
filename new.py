@@ -126,7 +126,7 @@ def multilayered_graph(n,d):
 
 def omegaPartition():
     boolean_function = {}
-    file_name = 'test2.txt'
+    file_name = 'test.txt'
     data = []
     with open(file_name, 'r') as file:
         for row in file:
@@ -155,10 +155,10 @@ def omegaPartition():
             if(s1 == s2):
                 aux.append(j)
                 check[j] = True
-        omega_input.append(aux)
+        omega_input.append((aux, 1)) 
 
     for x in omega_input:
-        output = boolean_function[x[0]]
+        output = boolean_function[x[0][0]]
         new_output = []
         for s in output:
             if(s != '-'):
@@ -166,7 +166,7 @@ def omegaPartition():
             else:
                 new_output.append(['0','1'])
         aux = itertools.product(*new_output)
-        omega_output.append([int(''.join(map(str, i)), 2) for i in aux])
+        omega_output.append(([int(''.join(map(str, i)), 2) for i in aux], d+1))
 
 # Plot Graph
 def plotGraph(G):
@@ -223,21 +223,15 @@ def flowModel(G, N, D, f):
     m.addConstrs(gp.quicksum(j*y[j, d] for j in range(1, N+1)) == (gp.quicksum(t[q, d] for q in range(1, N+1)) + gp.quicksum(w[q, d] for q in range(1, N+1))) for d in range(1, D+1)) # constraint 1e
     m.addConstrs(gp.quicksum(y[j, d] for j in range(1, N+1)) <= 1 for d in range(1, D+1)) # constraint 1f
     k = len(omega_input)
-    k_arcs = []
-    for i in range(1, k+1):
-        H = G.copy()
-        H.add_node(('s', 0), layer = 0)
-        H.add_node(('t', D+2), layer = D+2)
-        # Source Arcs:
-        for v in omega_input[i-1]:
-            H.add_edge(('s', 0), (v, 1), weight = 0, layer = 0, keep = False, flip = False)
-        for u in omega_output[i-1]:
-            H.add_edge((u, D+1), ('t', D+2), weight = 0, layer = D+1, keep = False, flip = False)
-        for e in H.edges():
-            k_arcs.append((e, i))
-        # plotGraph(H)
+
     # Flow Decision Vars
-    x = m.addVars(k_arcs, vtype = GRB.BINARY, name = "x")
+    x = m.addVars(H.edges, k, vtype = GRB.BINARY, name = "x")
+    # Constraints 1g
+    for i in range(1, k+1):
+            m.addConstrs(gp.quicksum(x[v, u, i] for u in H.successors(v)) - gp.quicksum(x[u, v, i] for u in H.predecessors(v)) == 0 for v in H.nodes() if v not in omega_input[i-1] and v not in omega_output[i-1])
+            m.addConstrs(gp.quicksum(x[v, u, i] for v in omega_input[i-1] for u in H.successors(v) if G.nodes[v]['layer'] == 1) == 1)
+            m.addConstrs(gp.quicksum(x[u, v, i] for v in omega_output[i-1] for u in H.predecessors(v) if G.nodes[v]['layer'] == d+1) == 1)
+
     # Flow Constraints
     for i in range(1, k+1):
         H = G.copy()
@@ -249,13 +243,15 @@ def flowModel(G, N, D, f):
         for u in omega_output[i-1]:
             H.add_edge((u, D+1), ('t', D+2), weight = 0, layer = D+1, keep = False, flip = False)
         # Constraints 1g
+        m.addConstrs(gp.quicksum(x[(v, u), i] for u in H.successors) - gp.quicksum(x[(u, v), i] for u in H.predecessors) == 0 for v in H.nodes() if v[0] != 's' and v[0] != 't')
+
         for v in H.nodes():
             a_in = H.in_edges(v)
             a_out = H.out_edges(v)
             if(v[0] == 's'):
-                m.addConstr(gp.quicksum(x[a, i] for a in a_out) - gp.quicksum(x[a, i] for a in a_in) == len(omega_input[i-1]))
+                m.addConstr(gp.quicksum(x[a, i] for a in a_in) - gp.quicksum(x[a, i] for a in a_out) == -len(omega_input[i-1]))
             elif(v[0] == 't'):
-                m.addConstr(gp.quicksum(x[a, i] for a in a_out) - gp.quicksum(x[a, i] for a in a_in) == -len(omega_input[i-1]))
+                m.addConstr(gp.quicksum(x[a, i] for a in a_in) - gp.quicksum(x[a, i] for a in a_out) == len(omega_input[i-1]))
             else:
                 m.addConstr(gp.quicksum(x[a, i] for a in a_in) - gp.quicksum(x[a, i] for a in a_out) == 0)
         # Constraints 2a, 2b, 2c
@@ -277,7 +273,7 @@ setQubitsDict(0)
 setToffoliDict(0)
 G = multilayered_graph(n,d)
 omegaPartition()
-flowModel(G, n, d, costs)
+# flowModel(G, n, d, costs)
 printEverything(G)
 
 
