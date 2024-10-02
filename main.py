@@ -37,7 +37,7 @@ qubits_dict = {}  # Dictionary for all possible qubit arrays
 toffoli_dict = {}  # Dictionary for indexing all possible Toffoli gates
 # 'x': control qubit, 'o': target qubit, '-': slack qubit
 
-q_dict = {} # q_dict[key] = value, value is the position of the flipped qubit by arc key
+flipQ_dict = {} # flipQ_dict[key] = value, value is the position of the flipped qubit by arc key
 # Functions
 
 # This function set all the elements in the toffoli_dict, O(n*(3^n)) 
@@ -93,7 +93,7 @@ def transition(index_q, index_f):
             aux *= q_input[i]
     if(aux == 1): # flips
         q_output[target] = 1 - q_input[target]
-        flip = target+1
+        flip = target + 1
     # but q_output is the qubits, not the index
     prod = 1
     index = 0
@@ -120,13 +120,13 @@ def multilayered_graph(n,d):
                     G.add_edge(node, vertex, weight = costs_dict[gate], layer = i, flip = False, keep = True)
                 else:
                     G.add_edge(node, vertex, weight = costs_dict[gate], layer = i, flip = True, keep = False)
-                    q_dict[(node, vertex)] = new_state[1]
+                    flipQ_dict[(node, vertex)] = new_state[1]
 
     return G
 
 def omegaPartition():
     boolean_function = {}
-    file_name = 'test2.txt'
+    file_name = 'test.txt'
     data = []
     with open(file_name, 'r') as file:
         for row in file:
@@ -193,12 +193,20 @@ def plotGraph(G):
 # Prints:
 def printEverything(G):
     print("Nodes: ",G.nodes())
+    print("\n")
     print("Edges: ", G.edges())
-    print(omega_input)
-    print(omega_output)
-    print(toffoli_dict)
-    print(costs_dict)
-    print(qubits_dict)
+    print("\n")
+    print("Omega Input: ",omega_input)
+    print("\n")
+    print("Omega Output: ", omega_output)
+    print("\n")
+    print("Toffoli Dict: ", toffoli_dict)
+    print("\n")
+    print("Costs Dict: ", costs_dict)
+    print("\n")
+    print("Qubits_Dict: ", qubits_dict)
+    print("\n") 
+    print("Flip Qubits Dict: ", flipQ_dict)
 
 # find_zero_bit_positions(a, n) is Q _ {sigma(a),0}
 def find_zero_bit_positions(number, N):
@@ -222,7 +230,7 @@ def flowModel(G, N, D, f):
     m.addConstrs(w[q, d] <= gp.quicksum(t[r, d] for r in range(1,N+1)) for q in range(1, N+1) for d in range(1, D+1)) # constraints 1d
     m.addConstrs(gp.quicksum(j*y[j, d] for j in range(1, N+1)) == (gp.quicksum(t[q, d] for q in range(1, N+1)) + gp.quicksum(w[q, d] for q in range(1, N+1))) for d in range(1, D+1)) # constraint 1e
     m.addConstrs(gp.quicksum(y[j, d] for j in range(1, N+1)) <= 1 for d in range(1, D+1)) # constraint 1f
-    k = len(omega_input)
+    k = len(omega_input) # commodities
     k_arcs = []
     for i in range(1, k+1):
         H = G.copy()
@@ -237,7 +245,7 @@ def flowModel(G, N, D, f):
             k_arcs.append((e, i))
         # plotGraph(H)
     # Flow Decision Vars
-    x = m.addVars(k_arcs, vtype = GRB.BINARY, name = "x")
+    x = m.addVars(k_arcs, vtype = GRB.CONTINUOUS, lb = 0, ub = 1, name = "x")
     # Flow Constraints
     for i in range(1, k+1):
         H = G.copy()
@@ -250,26 +258,40 @@ def flowModel(G, N, D, f):
             H.add_edge((u, D+1), ('t', D+2), weight = 0, layer = D+1, keep = False, flip = False)
         # Constraints 1g
         for v in H.nodes():
-            a_in = H.in_edges(v)
-            a_out = H.out_edges(v)
+            a_in = H.in_edges(v) # sigma_{-}(v)
+            a_out = H.out_edges(v) # sigma_{+}(v)
             if(v[0] == 's'):
                 m.addConstr(gp.quicksum(x[a, i] for a in a_out) - gp.quicksum(x[a, i] for a in a_in) == len(omega_input[i-1]))
             elif(v[0] == 't'):
-                m.addConstr(gp.quicksum(x[a, i] for a in a_out) - gp.quicksum(x[a, i] for a in a_in) == -len(omega_input[i-1]))
+                m.addConstr(gp.quicksum(x[a, i] for a in a_out) - gp.quicksum(x[a, i] for a in a_in) == -len(omega_output[i-1]))
             else:
-                m.addConstr(gp.quicksum(x[a, i] for a in a_in) - gp.quicksum(x[a, i] for a in a_out) == 0)
+                m.addConstr(gp.quicksum(x[a, i] for a in a_out) - gp.quicksum(x[a, i] for a in a_in) == 0)
         # Constraints 2a, 2b, 2c
-        keep_arcs = [(u, v) for u, v, d in H.edges(data=True) if d.get('keep') is True]
-        flip_arcs =  [(u, v) for u, v, d in H.edges(data=True) if d.get('flip') is True]
+        keep_arcs = []
+        flip_arcs = []
+        for e in H.edges():
+            u = e[0]
+            v = e[1]
+            if(H[u][v]["keep"] == True):
+                keep_arcs.append(e)
+            if(H[u][v]["flip"] == True):
+                flip_arcs.append(e)
         for j in range(0,len(flip_arcs)):
             a = flip_arcs[j]
-            b = q_dict[flip_arcs[j]]
+            b = flipQ_dict[flip_arcs[j]]
             c = flip_arcs[j][0][1]
-            m.addConstr(x[flip_arcs[j], i] <= t[q_dict[flip_arcs[j]], flip_arcs[j][0][1]]) # 2a
+            m.addConstr(x[flip_arcs[j], i] <= t[flipQ_dict[flip_arcs[j]], flip_arcs[j][0][1]]) # 2a
             m.addConstrs(x[flip_arcs[j], i] <= (1 - w[p, flip_arcs[j][0][1]]) for p in find_zero_bit_positions(flip_arcs[j][1][0], n)) # 2b
         for j in range(0,len(keep_arcs)):
-            m.addConstr(x[keep_arcs[j], i] <= (1 - gp.quicksum(t[q, keep_arcs[j][0][1]] for q in range(1,n+1)) + gp.quicksum(w[q, keep_arcs[j][0][1]] for q in find_zero_bit_positions(keep_arcs[j][1][0], n)))) # 2c
+            m.addConstr(x[keep_arcs[j], i] <= (1 - gp.quicksum(t[q, keep_arcs[j][0][1]] for q in range(1,N+1)) + gp.quicksum(w[q, keep_arcs[j][0][1]] for q in find_zero_bit_positions(keep_arcs[j][1][0], N)))) # 2c
     m.optimize()
+    if (m.status == GRB.INFEASIBLE):
+        print("Model is infeasible.")
+        m.computeIIS()
+        print("IIS computed. Constraints that are conflicting:")
+        for c in m.getConstrs():
+            if c.IISConstr:
+                print(c.constrName)
 
 
 # Main
