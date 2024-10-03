@@ -28,14 +28,14 @@ omega_output = []
 
 # Dictonary for indexing the Toffoli gates into their costs
 costs_dict = {}
-# Example: 0: ['o', 'x', 'x'] -> costs_dict[0] =  5 
+# Example: 0: ['+', 'o', 'o'] -> costs_dict[0] =  5 
 
 # Dictionaries for indexing qubit states and Toffoli gates
 qubits_dict = {}  # Dictionary for all possible qubit arrays
 # Example: {0: [0, 0, 0], 1: [0, 0, 1], 2: [0, 1, 0], 3: [0, 1, 1], ... }
 
 toffoli_dict = {}  # Dictionary for indexing all possible Toffoli gates
-# 'x': control qubit, 'o': target qubit, '-': slack qubit
+# 'o': control qubit, '+': target qubit, '-': slack qubit
 
 flipQ_dict = {} # flipQ_dict[key] = value, value is the position of the flipped qubit by arc key
 # Functions
@@ -45,9 +45,9 @@ def setToffoliDict(k):
     if(k == n):
         v = [0,0,0] # v[0]: # of target qubits, v[1]: # of control qubits, v[2]: # of slack qubits
         for x in brr:
-            if(x == 'o'):
+            if(x == '+'):
                 v[0] += 1
-            elif(x == 'x'):
+            elif(x == 'o'):
                 v[1] += 1
             else:
                 v[2] += 1
@@ -57,7 +57,7 @@ def setToffoliDict(k):
         toffoli_dict[m] = brr.copy()
         costs_dict[m] = costs[v[2]][v[1]]
     else:
-        for i in ['o','x','-']:
+        for i in ['+','o','-']:
             aux = brr[k]
             brr[k] = i
             setToffoliDict(k+1)
@@ -87,9 +87,9 @@ def transition(index_q, index_f):
     target = -1
     flip = -1
     for i in range(0,n):
-        if(f[i] == 'o'):
+        if(f[i] == '+'):
             target = i
-        elif(f[i] == 'x'):
+        elif(f[i] == 'o'):
             aux *= q_input[i]
     if(aux == 1): # flips
         q_output[target] = 1 - q_input[target]
@@ -126,7 +126,7 @@ def multilayered_graph(n,d):
 
 def omegaPartition():
     boolean_function = {}
-    file_name = 'test.txt'
+    file_name = 'ex2.txt'
     data = []
     with open(file_name, 'r') as file:
         for row in file:
@@ -211,8 +211,28 @@ def printEverything(G):
 # find_zero_bit_positions(a, n) is Q _ {sigma(a),0}
 def find_zero_bit_positions(number, N):
     binary_representation = format(number, '0{}b'.format(N))
-    zero_positions = [i for i, bit in enumerate(binary_representation) if bit == '0']
+    zero_positions = [i+1 for i, bit in enumerate(binary_representation) if bit == '0']
     return zero_positions
+
+# Print the Circuit
+def printSolution(m, n, d, t, w):
+    if m.status == GRB.OPTIMAL:
+        print("Circuit Cost: ", m.ObjVal)
+        for j in range (1,d+1):
+            print("(", end = '')
+            for i in range (1,n+1):
+                if(t[i, j].X > 0.5):
+                    print("+", end = '')
+                elif(w[i, j].X > 0.5):
+                    print("o", end = '')
+                else:
+                    print("-", end = '')
+                if(i != n):
+                    print(", ", end = '')
+            print(")", end = ' ')
+            print("\n")
+    else:
+        print("No solution")
 
 # Gurobi Code
 def flowModel(G, N, D, f):
@@ -263,7 +283,7 @@ def flowModel(G, N, D, f):
             if(v[0] == 's'):
                 m.addConstr(gp.quicksum(x[a, i] for a in a_out) - gp.quicksum(x[a, i] for a in a_in) == len(omega_input[i-1]))
             elif(v[0] == 't'):
-                m.addConstr(gp.quicksum(x[a, i] for a in a_out) - gp.quicksum(x[a, i] for a in a_in) == -len(omega_output[i-1]))
+                m.addConstr(gp.quicksum(x[a, i] for a in a_out) - gp.quicksum(x[a, i] for a in a_in) == -len(omega_input[i-1]))
             else:
                 m.addConstr(gp.quicksum(x[a, i] for a in a_out) - gp.quicksum(x[a, i] for a in a_in) == 0)
         # Constraints 2a, 2b, 2c
@@ -285,6 +305,7 @@ def flowModel(G, N, D, f):
         for j in range(0,len(keep_arcs)):
             m.addConstr(x[keep_arcs[j], i] <= (1 - gp.quicksum(t[q, keep_arcs[j][0][1]] for q in range(1,N+1)) + gp.quicksum(w[q, keep_arcs[j][0][1]] for q in find_zero_bit_positions(keep_arcs[j][1][0], N)))) # 2c
     m.optimize()
+    printSolution(m, n, d, t, w)
     if (m.status == GRB.INFEASIBLE):
         print("Model is infeasible.")
         m.computeIIS()
@@ -300,7 +321,7 @@ setToffoliDict(0)
 G = multilayered_graph(n,d)
 omegaPartition()
 flowModel(G, n, d, costs)
-printEverything(G)
+# printEverything(G)
 
 
 
