@@ -126,7 +126,7 @@ def multilayered_graph(n,d):
 
 def omegaPartition():
     boolean_function = {}
-    file_name = 'ex2.txt' # ex1: regular instance and ex2: "dont care" instance
+    file_name = 'ex1.txt' # ex1: regular instance and ex2: "dont care" instance
     data = []
     with open(file_name, 'r') as file:
         for row in file:
