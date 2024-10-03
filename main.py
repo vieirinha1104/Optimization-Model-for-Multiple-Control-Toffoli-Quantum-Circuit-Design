@@ -6,7 +6,7 @@ import gurobipy as gp
 from gurobipy import Model, GRB
 
 # Input Variables
-n, d = (3, 2)  # N: Number of qubits, d: Maximum number of gates of the circuit
+n, d = (3, 3)  # N: Number of qubits, d: Maximum number of gates of the circuit
 
 # Aux vars
 arr = [0] * n  # Aux array for storing qubit states
@@ -121,7 +121,7 @@ def multilayered_graph(n,d):
 
 def omegaPartition():
     boolean_function = {}
-    file_name = 'ex2.txt' # ex1: paper's example 1 instance, regular instance (d=3), ex2: paper's example 2 instance, dont care instance (d=2)
+    file_name = 'ex1.txt' # ex1: paper's example 1 instance, regular instance (d=3), ex2: paper's example 2 instance, dont care instance (d=2)
     data = []
     with open(file_name, 'r') as file:
         for row in file:
@@ -294,9 +294,7 @@ def flowModel(G, N, D, f):
             a_out = H.out_edges(v) # sigma_{+}(v)
             if(v[0] == 's'):
                 m.addConstr(gp.quicksum(x[a, i] for a in a_out) - gp.quicksum(x[a, i] for a in a_in) == len(omega_input[i-1]))
-            elif(v[0] == 't'):
-                m.addConstr(gp.quicksum(x[a, i] for a in a_out) - gp.quicksum(x[a, i] for a in a_in) == -len(omega_input[i-1]))
-            else:
+            elif(v[0] != 's' and v[0] != 't'):
                 m.addConstr(gp.quicksum(x[a, i] for a in a_out) - gp.quicksum(x[a, i] for a in a_in) == 0)
         # Constraints 2a, 2b, 2c
         flip_arcs, keep_arcs = set_keep_and_flip_arcs(H)
