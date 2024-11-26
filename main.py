@@ -6,7 +6,7 @@ import gurobipy as gp
 from gurobipy import Model, GRB
 
 # Input Variables
-n, d = (3, 3)  # N: Number of qubits, d: Maximum number of gates of the circuit
+n, d = (3, 2)  # N: Number of qubits, d: Maximum number of gates of the circuit
 
 # Aux vars
 arr = [0] * n  # Aux array for storing qubit states
@@ -121,7 +121,7 @@ def multilayered_graph(n,d):
 
 def omegaPartition():
     boolean_function = {}
-    file_name = 'ex1.txt' # ex1: paper's example 1 instance, regular instance (d=3), ex2: paper's example 2 instance, dont care instance (d=2)
+    file_name = 'ex2.txt' # ex1: paper's example 1 instance, regular instance (d=3), ex2: paper's example 2 instance, dont care instance (d=2)
     data = []
     with open(file_name, 'r') as file:
         for row in file:
@@ -253,6 +253,21 @@ def set_Karcs(G, D, k):
         # plotGraph(H)
     return k_arcs
 
+def set_Knodes(G, D, k):
+    k_nodes = []
+    for i in range(1, k+1):
+        H = set_Gk(G, D, i)
+        for v in H.nodes():
+            k_nodes.append((v, i))
+        # plotGraph(H)
+    return k_nodes
+
+def set_nodes_per_layer(G, D):
+    nodes_per_layer = [[] for _ in range(D + 3)]
+    for v in G.nodes():
+        nodes_per_layer[v[1]].append(v)
+    return nodes_per_layer
+
 # Return the set of flip arcs and keep arcs for a given G_k
 def set_keep_and_flip_arcs(H):
     keep_arcs, flip_arcs = ([],[])
@@ -264,10 +279,18 @@ def set_keep_and_flip_arcs(H):
             flip_arcs.append(e)
     return flip_arcs, keep_arcs
 
+def print_nodes_vars(k, m, x, k_nodes):
+    if (m.status == GRB.OPTIMAL):
+        print("Commodity ", k,":")
+        for v in k_nodes:
+            if(v[1] == k):
+                print(v[0], x[v].X)
+
+
 # Gurobi Code
 def flowModel(G, N, D, f):
     # Model
-    m = Model("MCT_Quantum_Circuit_Design")
+    m = Model("MCT_Quantum_Circuit_Design: Flow Model")
     # Decision Vars
     y = m.addVars(N+1, D+1, vtype = GRB.BINARY, name ="y")
     t = m.addVars(N+1, D+1, vtype = GRB.BINARY, name ="t")
@@ -284,7 +307,7 @@ def flowModel(G, N, D, f):
     k = len(omega_input) 
     k_arcs = set_Karcs(G, D, k)
     # Flow Decision Vars
-    x = m.addVars(k_arcs, vtype = GRB.BINARY, name = "x")
+    x = m.addVars(k_arcs, vtype = GRB.CONTINUOUS, lb = 0, ub = 1, name = "x") # You can set those variables as binary or relax them into continuous values in the range [0,1]
     # Flow Constraints
     for i in range(1, k+1):
         H = set_Gk(G, D, i)
@@ -301,11 +324,56 @@ def flowModel(G, N, D, f):
         a, b = (len(flip_arcs), len(keep_arcs))
         for j in range(0, a):
             m.addConstr(x[flip_arcs[j], i] <= t[flipQ_dict[flip_arcs[j]], flip_arcs[j][0][1]]) # 2a
+            p = flip_arcs[j]
             m.addConstrs(x[flip_arcs[j], i] <= (1 - w[p, flip_arcs[j][0][1]]) for p in find_zero_bit_positions(flip_arcs[j][1][0], n)) # 2b
         for j in range(0, b):
             m.addConstr(x[keep_arcs[j], i] <= (1 - gp.quicksum(t[q, keep_arcs[j][0][1]] for q in range(1,N+1)) + gp.quicksum(w[q, keep_arcs[j][0][1]] for q in find_zero_bit_positions(keep_arcs[j][1][0], N)))) # 2c
     m.optimize()
     printSolution(m, n, d, t, w)
+    for j in range(1, k+1):
+        print_nodes_vars(j, m, x, k_arcs)
+
+def NEWModel(G, N, D, f):
+    # Model
+    m = Model("MCT_Quantum_Circuit_Design: New Model")
+    # Decision Vars
+    y = m.addVars(N+1, D+1, vtype = GRB.BINARY, name ="y")
+    t = m.addVars(N+1, D+1, vtype = GRB.BINARY, name ="t")
+    w = m.addVars(N+1, D+1, vtype = GRB.BINARY, name ="w")
+    # Objective Function
+    m.setObjective(gp.quicksum(gp.quicksum(f[N-j][j-1]*y[j, d] for j in range(1, N+1)) for d in range(1, D+1)), GRB.MINIMIZE) # objective function 1a, f[N-j][j-1] := N-j slack qubits and j-1 control qubit
+    # Constraints 1b-1f
+    m.addConstrs(t[q, d] + w[q, d] <= 1 for q in range(1, N+1) for d in range(1, D+1)) # constraints 1b
+    m.addConstrs(gp.quicksum(t[q, d] for q in range(1, N+1)) <= 1 for d in range(1, D+1)) # constraint 1c
+    m.addConstrs(w[q, d] <= gp.quicksum(t[r, d] for r in range(1,N+1)) for q in range(1, N+1) for d in range(1, D+1)) # constraints 1d
+    m.addConstrs(gp.quicksum(j*y[j, d] for j in range(1, N+1)) == (gp.quicksum(t[q, d] for q in range(1, N+1)) + gp.quicksum(w[q, d] for q in range(1, N+1))) for d in range(1, D+1)) # constraint 1e
+    m.addConstrs(gp.quicksum(y[j, d] for j in range(1, N+1)) <= 1 for d in range(1, D+1)) # constraint 1f
+    # Commodities
+    k = len(omega_input) 
+    k_nodes = set_Knodes(G, D, k)
+    # Nodes Decision Vars
+    x = m.addVars(k_nodes, vtype = GRB.BINARY, name = "x") 
+    # Flow Constraints
+    for i in range(1, k+1):
+        H = set_Gk(G, D, i)
+        # Constraints 1g (New)
+        nodes_per_layer = set_nodes_per_layer(H, D)
+        for l in range(1, D): # double check this range
+            m.addConstrs(x[v, i] <= gp.quicksum(x[u, i] for u in H.successors(v)) for v in nodes_per_layer[l])
+        m.addConstr(gp.quicksum(x[v, i] for v in H.successors(nodes_per_layer[0][0])) == len(omega_input[i-1]))
+        m.addConstr(gp.quicksum(x[v, i] for v in H.predecessors(nodes_per_layer[D+2][0])) == len(omega_input[i-1]))
+        # Constraints 2a, 2b, 2c
+        flip_arcs, keep_arcs = set_keep_and_flip_arcs(H)
+        a, b = (len(flip_arcs), len(keep_arcs))
+        for j in range(0, a):
+            m.addConstr(x[flip_arcs[j][0], i] + x[flip_arcs[j][1], i] <= 1 + t[flipQ_dict[flip_arcs[j]], flip_arcs[j][0][1]]) # 2a
+            m.addConstrs(x[flip_arcs[j][0], i] + x[flip_arcs[j][1], i] <= (2 - w[p, flip_arcs[j][0][1]]) for p in find_zero_bit_positions(flip_arcs[j][1][0], n)) # 2b
+        for j in range(0, b):
+            m.addConstr(x[keep_arcs[j][0], i] + x[keep_arcs[j][1], i] <= (2 - gp.quicksum(t[q, keep_arcs[j][0][1]] for q in range(1,N+1)) + gp.quicksum(w[q, keep_arcs[j][0][1]] for q in find_zero_bit_positions(keep_arcs[j][1][0], N)))) # 2c
+    m.optimize()
+    printSolution(m, n, d, t, w)
+    for j in range(1, k+1):
+        print_nodes_vars(j, m, x, k_nodes)
 
 # Main
 setQubitsDict(0)
@@ -313,6 +381,7 @@ setToffoliDict(0)
 G = multilayered_graph(n,d)
 omegaPartition()
 flowModel(G, n, d, costs)
+NEWModel(G, n, d, costs)
 # printEverything(G)
 
 
